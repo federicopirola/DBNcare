@@ -47,14 +47,11 @@ The table below highlights the main features currently implemented in DBNcare. F
 | Approximate Inference| ✔️      | ❌         | ❌        |
 | Forecasting          | ✔️      | ❌         | ❌        |
 | Sampling             | ✔️      | ❌         | ❌        |
-## Contributing
-<a name="contributing"></a>
-<!-- Content for the Contributing section -->
 
 ## License
 <a name="license"></a>
 <!-- Content for the License section -->
-
+This software is distributed under the terms of both the Apache License (Version 2.0) and the MIT license.
 ## Contact
 <a name="contact"></a>
 <!-- Content for the Contact section -->

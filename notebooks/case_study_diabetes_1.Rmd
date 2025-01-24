@@ -1,0 +1,720 @@
+---
+title: "Diabetes Type 1 case study"
+output:
+  html_document:
+    df_print: paged
+---
+
+Here we present a case study on Type 1 Diabetes, known also as Diabetes Mellitus, to show all the main functions of our library DBNcare working with longitudinal data. The notebook shows how to initialize and modify a Dynamic Bayesian Network (DBN) and how to learn the structure and parameters of the model with different methods. It also explores how to generate a dataset given the structure and the parameters of the DBN and how to answer to different inference queries.
+
+# Dynamic Bayesian Network from a simulated study on Type 1 Diabetes
+
+Diabetes Mellitus is a metabolic disorder that represents one of the most prevalent diseases in industrialized countries and an increasing burden in the developing regions. In this study, we are considering the DBN derived from the paper of [S. Marini et al](https://pubmed.ncbi.nlm.nih.gov/26325295/). In particular, we kept the focus on the EI-DBN learned in the paper which has been obtained by jointly considering a longitudinal cohort of patients with Type 1 Diabetes and some prior clinical knowledge obtained from a review of the state of the art. Standard DBNs account just for multivariate time series data, thus we kept the focus on the dynamic variables from the EI-DBN in the reference paper, namely the variables that are collected at fixed distances in time. 
+It follows a list of the variables included in this study and their descriptions:
+
+## **Dynamic Variables**
+1. **Body Mass Index (BMI)**  
+   A measure of body fat calculated from weight and height. High BMI is associated with obesity-related complications, including diabetes and cardiovascular disease.
+
+2. **Waist-to-Hip Ratio (WHR)**  
+   Reflects the distribution of body fat by comparing waist and hip measurements. High WHR is linked to central obesity, increasing the risks of metabolic syndrome and cardiovascular complications.
+
+3. **Systolic Blood Pressure (SBP)**  
+   The pressure in arteries during heart contraction. Hypertension (high SBP) is a significant risk factor for cardiovascular and renal complications.
+
+4. **Low-Density Lipoprotein (LDL)**  
+   Known as "bad cholesterol," it promotes the accumulation of fatty deposits in arteries, increasing cardiovascular disease risk.
+
+5. **High-Density Lipoprotein (HDL)**  
+   Called "good cholesterol," it removes excess cholesterol from the blood. Low HDL levels are associated with increased risk of atherosclerosis and heart disease.
+
+6. **Triglycerides (TRIG)**  
+   A type of lipid found in the blood. Elevated levels are linked to increased cardiovascular and metabolic risks.
+
+7. **Glycated Hemoglobin (HbA1c)**  
+   Indicates the average blood glucose levels over the past 2-3 months. A higher value suggests poor diabetes management and increased risk of long-term complications.
+
+8. **Nephropathy (Nephro)**  
+   A diabetes-related kidney complication characterized by impaired kidney function. It progresses due to poor glycemic control, hypertension, and other factors.
+
+9. **Cardiovascular Disease (CVD)**  
+   Includes conditions such as heart attack and stroke caused by atherosclerosis, high blood pressure, and dyslipidemia. A primary long-term complication of diabetes.
+
+10. **Treatment**  
+   Reflects the intensity of diabetes management (e.g., conventional vs. intensive therapy). Influences HbA1c levels dynamically and affects long-term outcomes like nephropathy.
+
+# Dynamic Bayesian Network initialization
+
+Hereinafter, the set of edges describing the relationship at time 0 and over time are saved into a 2-columns matrix. The edges from the transition network are obtained from the reference paper distinguishing between instantaneous and lagged effects, respectively represented by intra-slice and inter-slice edges. The relationship between variables at time 0 are, instead, assumed to be the same as the set of instantaneous relationship, namely the intra-slice arcs from the transition network.
+
+```{r}
+library(zeallot)
+library(bnlearn)
+library(gRain)
+library(DynamicBayesianNetwork)
+
+#Edges list
+arcs_list <- c(
+  "BMI(t-1)", "BMI(t)", 
+  "BMI(t-1)", "SBP(t)", 
+  "CVD(t-1)", "CVD(t)", 
+  "HDL(t-1)", "HDL(t)", 
+  "HDL(t-1)", "LDL(t)", 
+  "HDL(t-1)", "TRIG(t)", 
+  "HDL(t)", "CVD(t)", 
+  "HbA1c(t-1)", "HbA1c(t)", 
+  "HbA1c(t)", "Nephropathy(t)", 
+  "LDL(t-1)", "LDL(t)", 
+  "LDL(t-1)", "HDL(t)", 
+  "LDL(t)", "CVD(t)", 
+  "Nephropathy(t-1)", "Nephropathy(t)", 
+  "SBP(t-1)", "SBP(t)", 
+  "SBP(t)", "CVD(t)", 
+  "TRIG(t-1)", "TRIG(t)", 
+  "TRIG(t-1)", "HDL(t)", 
+  "TRIG(t)", "CVD(t)", 
+  "Treatment(t-1)", "HbA1c(t)", 
+  "Treatment(t)", "Nephropathy(t)", 
+  "WHR(t-1)", "WHR(t)", 
+  "WHR(t-1)", "BMI(t)", 
+  "WHR(t-1)", "HDL(t)", 
+  "WHR(t-1)", "TRIG(t)",
+  "HDL(0)", "CVD(0)",
+  "HbA1c(0)", "Nephropathy(0)",
+  "LDL(0)", "CVD(0)",
+  "SBP(0)", "CVD(0)",
+  "TRIG(0)", "CVD(0)",
+  "Treatment(0)", "Nephropathy(0)"
+)
+
+# Convert the list into a matrix with 2 columns ("From" and "To")
+arcs_matrix <- matrix(arcs_list, ncol = 2, byrow = TRUE)
+colnames(arcs_matrix) <- c("From", "To")
+
+# Print the arcs matrix to verify
+print(arcs_matrix)
+
+```
+
+The DBN structure is initialized via `empty_DBN` function from DBNcare and the arcs are added sequentially from the matrix defined above via `add_arc_DBN` function from the same library. Indeed, function `summary_DBN` gives a brief summary of the DBN structure, such as the number of nodes, the number of edges in each network and the parent set of each node included in the DBN.
+
+```{R}
+# Empty DBN initialization
+diabetes_management_dbn<-empty_DBN(dynamic_nodes = variables <- c(
+  "HDL",         # High-Density Lipoprotein Cholesterol
+  "LDL",         # Low-Density Lipoprotein Cholesterol
+  "TRIG",        # Triglycerides
+  "SBP",         # Systolic Blood Pressure
+  "BMI",         # Body Mass Index
+  "WHR",         # Waist-Hip Ratio
+  "HbA1c",       # Glycated Hemoglobin
+  "Nephropathy", # Kidney Disease Progression
+  "CVD",         # Cardiovascular Disease Status
+  "Treatment"    # Whether a patient is receiving treatment
+), markov_order = 1)
+
+# Function to add initial and transition edges to the DBN
+parse_arc <- function(arc) {
+  parts <- strsplit(arc, "\\(|\\)")[[1]]
+  return(c(parts[1], ifelse(parts[2] == "0", "t_0", parts[2])))
+}
+
+# Add each arc to the DBN
+for (i in 1:nrow(arcs_matrix)) {
+  from <- parse_arc(arcs_matrix[i, "From"])
+  to <- parse_arc(arcs_matrix[i, "To"])
+  
+  diabetes_management_dbn <- add_arc_DBN(
+    DBN = diabetes_management_dbn,
+    from = from,
+    to = to   
+  )
+}
+
+# Summary of the DBN
+summary_DBN(diabetes_management_dbn)
+```
+
+The Network at time 0 is visualized via `plot_g0` function from DBNcare:
+
+```{r}
+# Network at time 0
+plot_g0(diabetes_management_dbn)
+```
+
+The same goes for the transition network through function `plot_g_transition`:
+
+```{r}
+# Transition Network
+plot_g_transition(diabetes_management_dbn)
+```
+
+
+# Variables' levels and DBN' conditional probability tables (CPTs) definition
+
+DBNcare supports Multinomial DBNs, thus we defined every variables included in the model as categorical. Some of the variables are binary and others present three levels, depending on the information obtained from the reference paper and other state-of-the-art works on Type 1 Diabetes. 
+Hereinafter the dynamic variables are listed along with their respective levels:
+
+- **HDL**:
+  - Normal
+  - Low
+
+- **LDL**:
+  - Optimal
+  - Near Optimal
+  - High
+
+- **TRIG**:
+  - Normal
+  - High
+
+- **SBP**:
+  - Normal
+  - Elevated
+  - Hypertensive
+
+- **BMI**:
+  - Normal
+  - Overweight
+  - Obese
+
+- **WHR**:
+  - Low Risk
+  - High Risk
+
+- **HbA1c**:
+  - Normal
+  - High
+
+- **Nephropathy**:
+  - None
+  - Early Stage
+  - Advanced Stage
+
+- **CVD**:
+  - None
+  - Present
+
+- **Treatment**:
+  - Yes
+  - No
+
+The reference paper do not include the CPTs obtained from the simulated longitudinal cohort, thus we defined them based on state-of-the-art works on Type 1 Diabetes. We reported the motivations for the definition of each conditional probability set and some reference works that helped us during this process:
+
+### 1. **CVD**
+**Parents at time 0:** HDL(0), LDL(0), SBP(0), TRIG(0)  
+**Parents at time t:** CVD(t-1), HDL(t), LDL(t), SBP(t), TRIG(t)  
+
+**References:**
+- **Framingham Heart Study**: Provides robust insights into cardiovascular risk factors, specifically the impact of HDL and LDL on CVD risk. The study highlights that low HDL and high LDL levels significantly increase cardiovascular disease risk.
+- **ACC/AHA Guidelines (2019)**: Discusses hypertension stages and their correlation with cardiovascular risk. Elevated and hypertensive SBP are strongly linked to increased CVD incidence.
+
+**Reasoning:**
+- Probabilities reflect combinations of HDL, LDL, SBP, and TRIG levels, with higher risks associated with combinations like low HDL, high LDL, hypertensive SBP, and high triglycerides. Probabilities were normalized for each condition.
+- Previous CVD status (CVD(t-1)) increases the likelihood of present CVD (CVD(t)).
+
+---
+
+### 2. **Nephropathy**
+**Parents at time 0:** HbA1c(0), Treatment(0)  
+**Parents at time t:** Nephropathy(t-1), HbA1c(t), Treatment(t) 
+
+**References:**
+- **Diabetes Control and Complications Trial (DCCT/EDIC)**: Provides evidence on how poor glycemic control (high HbA1c) accelerates nephropathy progression, while effective treatment mitigates this risk.
+- **UKPDS**: Demonstrates that intensive glycemic control significantly reduces the risk of microvascular complications such as nephropathy.
+
+**Reasoning:**
+- Probabilities reflect the protective effect of treatment and the increased risk from high HbA1c levels. For example, untreated high HbA1c leads to higher probabilities of early and advanced nephropathy.
+- Current glycemic control (HbA1c(t)) and treatment reduce the risk of progression from early to advanced stages. Nephropathy(t-1) status strongly informs current probabilities.
+
+
+---
+
+### 3. **HbA1c**
+**Parents at time 0::** --
+**Parents at time t::** HbA1c(t-1), Treatment(t-1)  
+**References:**
+- **American Diabetes Association (ADA) Standards of Care (2023)**: Discusses the role of treatment (e.g., insulin therapy) in maintaining normal HbA1c levels.
+- **ADA Standards of Care (2023)**: Reinforces the impact of continued treatment on maintaining or improving HbA1c levels.
+
+**Reasoning:**
+- Treated individuals have a higher probability of achieving normal HbA1c, while untreated individuals have increased chances of high HbA1c.
+- HbA1c present an autoregressive pattern over time, namely HbA1c(t-1) influences HbA1c(t)
+
+---
+
+### 4. **WHR**
+**Parents at time 0::** --
+**Parents at time t::** WHR(t-1)
+**References:**
+- **WHO Guidelines on Waist-Hip Ratio (WHR)**: Indicates that WHR tends to remain stable over short time frames, with gradual changes due to lifestyle or medical intervention.
+
+**Reasoning:**
+- Probabilities reflect the prevalence of low-risk and high-risk WHR categories in the general population.
+- WHR(t-1) directly influences WHR(t), with small probabilities assigned to transitions between risk categories.
+
+---
+
+### 5. **BMI**
+**Parents at time 0::** -- 
+**Parents at time t::** BMI(t-1), WHR(t-1)
+
+**References:**
+- **Global Burden of Disease Study (2017)**: Provides insights into the relationship between WHR and BMI categories (normal, overweight, obese).
+
+**Reasoning:**
+- Probabilities reflect the likelihood of each BMI category given WHR levels. High-risk WHR increases the probability of being overweight or obese.
+- BMI(t-1) remains the strongest predictor of BMI(t), with WHR(t-1) providing additional context for transitions between categories.
+
+---
+
+### 6. **SBP**
+**Parents at time 0::** -- 
+**Parents at time t::** SBP(t-1), BMI(t-1)
+
+**References:**
+- **JNC 8 (Eighth Joint National Committee)**: Discusses BMI’s impact on SBP categories (normal, elevated, hypertensive).
+
+**Reasoning:**
+- Higher BMI increases the probability of elevated and hypertensive SBP levels. Normal BMI correlates with a higher probability of normal SBP.
+- SBP(t-1) largely determines SBP(t), but changes in BMI(t-1) can influence transitions, especially for elevated or hypertensive categories.
+
+---
+
+### 7. **LDL**
+**Parents at time 0::** --
+**Parents at time t::** HDL(t-1), LDL(t-1)
+
+**References:**
+- **National Cholesterol Education Program (NCEP)**: Provides data on LDL level distributions (optimal, near optimal, high).
+- **NCEP Guidelines**: Suggests that LDL levels tend to remain consistent over short time-frames, with minor changes due to diet, medication, or lifestyle.
+
+
+**Reasoning:**
+- Probabilities reflect population prevalence of LDL levels based on NCEP guidelines.
+- LDL(t-1) determines LDL(t) with small probabilities for transitions between categories.
+
+
+---
+
+### 8. **HDL**
+**Parents at time 0::** -- 
+**Parents at time t::** HDL(t-1), LDL(t-1), TRIG(t-1), WHR(t-1)
+
+**References:**
+- **Framingham Heart Study**: Explores the inverse relationship between LDL and HDL levels in cardiovascular risk.
+- **American Diabetes Association (ADA)**: Discusses the role of waist-to-hip ratio (WHR) as an indicator of dyslipidemia and its relationship with HDL
+- **National Cholesterol Education Program (NCEP):**: Highlights the influence of triglycerides (TRIG) on HDL levels, particularly in metabolic syndrome contexts.
+
+**Reasoning:**
+- Optimal LDL is associated with a higher probability of normal HDL, while high LDL correlates with a higher likelihood of low HDL.
+- HDL(t-1) strongly predicts HDL(t), but LDL(t) influences transitions due to their inverse relationship.
+- TRIG(t-1) affects HDL(t) by modulating lipid metabolism, particularly in the context of metabolic syndrome.
+- WHR(t-1) indirectly influences HDL(t) by reflecting adiposity and associated dyslipidemia patterns.
+---
+
+### 9. **TRIG**
+**Parents at time 0::** --
+**Parents at time t::** HDL(t-1), TRIG(t-1), WHR(t-1)
+
+**References:**
+- **NHANES (National Health and Nutrition Examination Survey)**: Correlates WHR and triglyceride levels, with minor fluctuations over time based on lifestyle or interventions.
+- **European Hearth Journal**: Explores the interaction between triglycerides, HDL, and cardiovascular risks, supporting their use in stratifying metabolic health.
+
+**Reasoning:**
+- High-risk WHR increases the probability of high triglyceride levels, while low-risk WHR correlates with normal triglycerides.
+- TRIG(t-1) largely predicts TRIG(t), with WHR(t) affecting transitions to higher levels.
+- HDL(t-1): Inversely influences TRIG(t), with lower HDL levels associated with higher triglycerides due to shared metabolic pathways.
+
+
+---
+
+### 9. **Treatment**
+**Parents at time 0::** --
+**Parents at time t::** --
+
+---
+
+
+```{r}
+# 1. BMI Probability Table at time t
+BMI.prob <- array(
+  c(0.85, 0.10, 0.05, 0.75, 0.20, 0.05, 0.10, 0.80, 0.10, 0.05, 0.65, 0.30, 0.05, 0.10, 0.85, 0.03, 0.07, 0.90),
+  dim = c(3, 2, 3),
+  dimnames = list(
+    BMI_t = c("Normal", "Overweight", "Obese"),
+    `WHR_t-1` = c("Low Risk", "High Risk"),
+    `BMI_t-1` = c("Normal", "Overweight", "Obese")
+  )
+)
+
+# 2. WHR Probability Table at time t
+WHR.prob <- array(
+  c(
+    0.90, 0.10, # WHR(t-1) = Low Risk
+    0.40, 0.60  # WHR(t-1) = High Risk
+  ),
+  dim = c(2, 2),
+  dimnames = list(
+    WHR_t = c("Low Risk", "High Risk"),
+    `WHR_t-1` = c("Low Risk", "High Risk")
+  )
+)
+
+# 3. SBP Probability Table at time t
+SBP.prob <- array(
+  c(0.85, 0.10, 0.05, 0.70, 0.20, 0.10, 0.50, 0.30, 0.20,
+    0.10, 0.70, 0.20, 0.05, 0.60, 0.35, 0.03, 0.50, 0.47,
+    0.05, 0.10, 0.85, 0.03, 0.07, 0.90, 0.01, 0.05, 0.94),
+  dim = c(3, 3, 3),
+  dimnames = list(
+    SBP_t = c("Normal", "Elevated", "Hypertensive"),
+    `BMI_t-1` = c("Normal", "Overweight", "Obese"),
+    `SBP_t-1` = c("Normal", "Elevated", "Hypertensive")
+  )
+)
+
+# 4. LDL Probability Table at time t
+LDL.prob <- array(
+  c(0.85, 0.10, 0.05, 0.75, 0.15, 0.10, 0.60, 0.30, 0.10, 0.50, 0.40, 0.10, 0.10, 0.20, 0.70, 0.05, 0.10, 0.85),
+  dim = c(3, 2, 3),
+  dimnames = list(
+    LDL_t = c("Optimal", "Near Optimal", "High"),
+    `HDL_t-1` = c("Normal", "Low"),
+    `LDL_t-1` = c("Optimal", "Near Optimal", "High")
+  )
+)
+
+# 5. HDL Probability Table at time t
+HDL.prob <- array(
+  c(
+    # HDL(t-1) = Normal
+    0.05, 0.95, 0.20, 0.80, 0.10, 0.90, 0.30, 0.70, 0.15, 0.85, 0.35, 0.65, 0.20, 0.80, 0.50, 0.50, 0.25, 0.75,
+    # HDL(t-1) = Low
+    0.40, 0.60, 0.50, 0.50, 0.60, 0.40, 0.70, 0.30, 0.70, 0.30, 0.80, 0.20, 0.90, 0.10, 0.95, 0.05, 0.85, 0.15
+  ),
+  dim = c(2, 2, 2, 3, 2),
+  dimnames = list(
+    HDL_t = c("Low", "Normal"),
+    `HDL_t-1` = c("Low", "Normal"),
+    `TRIG_t-1` = c("Normal", "High"),
+    `LDL_t-1` = c("Optimal", "Near Optimal", "High"),
+    `WHR_t-1` = c("Low Risk", "High Risk")
+  )
+)
+
+
+# 6. TRIG Probability Table at time t
+TRIG.prob <- array(
+  c(
+    0.85, 0.15, 0.70, 0.30, 
+    0.60, 0.40, 0.50, 0.50, 
+    0.30, 0.70, 0.10, 0.90, 
+    0.20, 0.80, 0.05, 0.95
+  ),
+  dim = c(2, 2, 2, 2),
+  dimnames = list(
+    TRIG_t = c("Normal", "High"),
+    `HDL_t-1` = c("Normal", "Low"),
+    `WHR_t-1` = c("Low Risk", "High Risk"),
+    `TRIG_t-1` = c("Normal", "High")
+  )
+)
+
+# 7. HbA1c Probability Table at time t
+HbA1c.prob <- array(
+  c(0.90, 0.10, 0.80, 0.20, 0.40, 0.60, 0.20, 0.80),
+  dim = c(2, 2, 2),
+  dimnames = list(
+    HbA1c_t = c("Normal", "High"),
+    `Treatment_t-1` = c("Yes", "No"),
+    `HbA1c_t-1` = c("Normal", "High")
+  )
+)
+
+# 8. Nephropathy Probability Table at time t
+Nephropathy.prob <- array(
+  c(0.90, 0.08, 0.02, 0.85, 0.10, 0.05, 0.70, 0.20, 0.10, 0.60, 0.30, 0.10,
+    0.10, 0.80, 0.10, 0.05, 0.75, 0.20, 0.05, 0.70, 0.25, 0.03, 0.60, 0.37,
+    0.02, 0.20, 0.78, 0.01, 0.10, 0.89, 0.01, 0.05, 0.94, 0.00, 0.02, 0.98),
+  dim = c(3, 2, 2, 3),
+  dimnames = list(
+    Nephropathy_t = c("None", "Early Stage", "Advanced Stage"),
+    Treatment_t = c("Yes", "No"),
+    HbA1c_t = c("Normal", "High"),
+    `Nephropathy_t-1` = c("None", "Early Stage", "Advanced Stage")
+  )
+)
+
+# 9. CVD Probability Table at time t
+CVD.prob <- array(
+  c(
+    0.95, 0.05, 0.90, 0.10, 0.80, 0.20, 0.85, 0.15, 0.75, 0.25, 0.65, 0.35, 0.70, 0.30, 0.60, 0.40, 0.50, 0.50, 0.60, 0.40, 0.50, 0.50, 0.40, 0.60, 0.50, 0.50,
+    0.80, 0.20, 0.70, 0.30, 0.50, 0.50, 0.60, 0.40, 0.50, 0.50, 0.40, 0.60, 0.30, 0.70, 0.20, 0.80, 0.10, 0.90, 0.30, 0.70, 0.20, 0.80, 0.10, 0.90,
+    0.05, 0.95, 0.03, 0.97, 0.01, 0.99, 0.02, 0.98, 0.01, 0.99, 0.00, 1.00, 0.03, 0.97, 0.02, 0.98, 0.01, 0.99, 0.02, 0.98, 0.01, 0.99, 0.00, 1.00, 0.01, 0.99,
+    0.00, 1.00, 0.00, 1.00, 0.00, 1.00, 0.00, 1.00, 0.00, 1.00, 0.00, 1.00, 0.00, 1.00, 0.00, 1.00, 0.00, 1.00, 0.00, 1.00, 0.00, 1.00, 0.00, 1.00
+  ),
+  dim = c(2, 3, 2, 2, 3, 2),
+  dimnames = list(
+    CVD_t = c("None", "Present"),
+    SBP_t = c("Normal", "Elevated", "Hypertensive"),
+    TRIG_t = c("Normal", "High"),
+    HDL_t = c("Normal", "Low"),
+    LDL_t = c("Optimal", "Near Optimal", "High"),
+    `CVD_t-1` = c("None", "Present")
+  )
+)
+
+
+# 10. Treatment Probability Table at time t
+Treatment.prob <- array(c(0.50, 0.50), dim = c(2), dimnames = list(Treatment_t = c("Yes", "No")))
+
+# 1. CVD Probability Table at time 0
+CVD_0.prob <- array(
+  c(
+    0.95, 0.05, 0.90, 0.10, 0.85, 0.15, 0.80, 0.20, 0.75, 0.25, 0.70, 0.30, 0.65, 0.35, 0.60, 0.40, 0.55, 0.45,
+    0.90, 0.10, 0.85, 0.15, 0.80, 0.20, 0.75, 0.25, 0.70, 0.30, 0.65, 0.35, 0.60, 0.40, 0.55, 0.45, 0.50, 0.50,
+    0.80, 0.20, 0.75, 0.25, 0.70, 0.30, 0.65, 0.35, 0.60, 0.40, 0.55, 0.45, 0.50, 0.50, 0.45, 0.55, 0.40, 0.60,
+    0.85, 0.15, 0.80, 0.20, 0.75, 0.25, 0.70, 0.30, 0.65, 0.35, 0.60, 0.40, 0.55, 0.45, 0.50, 0.50, 0.45, 0.55,
+    0.75, 0.25, 0.70, 0.30, 0.65, 0.35, 0.60, 0.40, 0.55, 0.45, 0.50, 0.50, 0.45, 0.55, 0.40, 0.60, 0.35, 0.65,
+    0.70, 0.30, 0.65, 0.35, 0.60, 0.40, 0.55, 0.45, 0.50, 0.50, 0.45, 0.55, 0.40, 0.60, 0.35, 0.65, 0.30, 0.70
+  ),
+  dim = c(2, 2, 3, 3, 2),
+  dimnames = list(
+    CVD_0 = c("None", "Present"),
+    HDL_0 = c("Normal", "Low"),
+    LDL_0 = c("Optimal", "Near Optimal", "High"),
+    SBP_0 = c("Normal", "Elevated", "Hypertensive"),
+    TRIG_0 = c("Normal", "High")
+  )
+)
+
+# 2. Nephropathy Probability Table at time 0
+Nephropathy_0.prob <- array(
+  c(
+    0.95, 0.04, 0.01, 0.85, 0.10, 0.05,
+    0.70, 0.20, 0.10, 0.50, 0.30, 0.20
+  ),
+  dim = c(3, 2, 2),
+  dimnames = list(
+    Nephropathy_0 = c("None", "Early Stage", "Advanced Stage"),
+    HbA1c_0 = c("Normal", "High"),
+    Treatment_0 = c("Yes", "No")
+  )
+)
+
+# 3. HbA1c Probability Table at time 0
+HbA1c_0.prob <- array(c(0.85, 0.15), dim = c(2), dimnames = list(HbA1c_0 = c("Normal", "High")))
+
+# 4. Treatment Probability Table at time 0
+Treatment_0.prob <- array(c(0.50, 0.50), dim = c(2), dimnames = list(Treatment_0 = c("Yes", "No")))
+
+# 5. WHR Probability Table at time 0
+WHR_0.prob <- array(c(0.85, 0.15), dim = c(2), dimnames = list(WHR_0 = c("Low Risk", "High Risk")))
+
+# 6. BMI Probability Table at time 0
+BMI_0.prob <- array(c(0.75, 0.20, 0.05), dim = c(3), dimnames = list(BMI_0 = c("Normal", "Overweight", "Obese")))
+
+# 7. SBP Probability Table at time 0
+SBP_0.prob <- array(c(0.70, 0.20, 0.10), dim = c(3), dimnames = list(SBP_0 = c("Normal", "Elevated", "Hypertensive")))
+
+# 8. LDL Probability Table at time 0
+LDL_0.prob <- array(c(0.60, 0.30, 0.10), dim = c(3), dimnames = list(LDL_0 = c("Optimal", "Near Optimal", "High")))
+
+# 9. HDL Probability Table at time 0
+HDL_0.prob <- array(c(0.70, 0.30), dim = c(2), dimnames = list(HDL_0 = c("Normal", "Low")))
+
+# 10. TRIG Probability Table at time 0
+TRIG_0.prob <- array(c(0.80, 0.20), dim = c(2), dimnames = list(TRIG_0 = c("Normal", "High")))
+```
+
+
+```{R}
+# list of CPTs
+CPT_list <- list(
+  BMI_t = BMI.prob,
+  WHR_t = WHR.prob,
+  SBP_t = SBP.prob,
+  LDL_t = LDL.prob,
+  HDL_t = HDL.prob,
+  TRIG_t = TRIG.prob,
+  HbA1c_t = HbA1c.prob,
+  Nephropathy_t = Nephropathy.prob,
+  CVD_t = CVD.prob,
+  Treatment_t = Treatment.prob,
+  
+  WHR_0 = WHR_0.prob,
+  HDL_0 = HDL_0.prob,
+  CVD_0 = CVD_0.prob,
+  BMI_0 = BMI_0.prob,
+  SBP_0 = SBP_0.prob,
+  LDL_0 = LDL_0.prob,
+  TRIG_0 = TRIG_0.prob,
+  HbA1c_0 = HbA1c_0.prob,
+  Nephropathy_0 = Nephropathy_0.prob,
+  Treatment_0 = Treatment_0.prob
+)
+```
+
+Given an object of class `dbn` describing the structure of the DBN and a coherent list of CPTs for both variables at time 0 and at time t, `DBN_parameters` function from DBNcare generates an object of class `dbn.fit`. For each node in the network the parent set, the children set and the set of CPTs are saved in a named list.
+
+```{R}
+# Generation of an object of class dbn.fit obtained by encoding the information from the EI-DBN
+fitted_diabetes_management_dbn <- DynamicBayesianNetwork::DBN_parameters(diabetes_management_dbn, CPT_list)
+fitted_diabetes_management_dbn
+```
+
+# Sampling data given the structure and the parameters of a DBN
+
+A dataset comprised of 10k time series of 5 samples each (+ data at time 0) is generated via `dbn_sampling` function from `DBNcare`. Data are generated sequentially following the partially node ordering implied by the network and the temporal order, from data at time 0 to the fifth time slice. For each sample, the value for each node at time t is obtained by randomly generate a value from the multinulli distribution with probabilities depending on the previously generated parents' values.
+
+```{r}
+# A set of 10k time series of 5(+1) samples each are generated from the CPTs of the encoded EI-DBN
+sample_data_diabetes <- dbn_sampling(fitted_diabetes_management_dbn, 10000, 5)
+```
+
+# Learning a DBN from Data: Structure Learning and Parameter Learning implementation
+
+Firstly the parameters of the DBN are learned given the structure from the reference paper (EI-DBN). The parameteres are learned via Maximum Likelihood Estimation via `DBN_parameters` function of `DBNcare`.
+
+```{r}
+# Here the parameters are learned on the sample set given the structure encoded in the EI-DBN
+learned_diabetes_management_cpts_from_fixed_structure <- DBN_parameters(DBN = diabetes_management_dbn, data = sample_data_diabetes)
+```
+
+Then both the structure and parameters are entirely learned on the simulated dataset of 10k samples. The structure is learned via Hill Climbing method with Bayesian Information Criterion (BIC) as a score. Hill climbing method is a greedy score-based method which iteratively selects the action which maximises the score from a given moveset, resulting in a neighborhood graph. For DBNs Hill Climbing consists in two steps, firstly we learn the initial network on the data at time 0 and then the transition network is learned on the lagged dataset comprised of data at time t-1 and at time t. The moveset is comprised of three possible actions: arc addition, arc deletion and arc reversal and the global BIC score that is locally optimized at each iteration is a penalized form of Log-Likelihood which penalizes for more complex models.
+Once learned the structure, the parameters are obtained via Maximum Likelihood estimation, estimating separately the CPTs at time 0 and at time t.
+
+```{r}
+# Here, instead, both the structure and the parameters of the network are learned from the sample set
+# The structure is learned via Hill Climbing method, using Bayesian Information Criterion as local score 
+learned_diabetes_management_dbn <- DynamicBayesianNetwork::StructureLearning.Network(data = sample_data_diabetes, algorithm = 'hc', score='bic')
+summary_DBN(learned_diabetes_management_dbn)
+# The parameters are learned instead with a standard frequentist estimation, namely the Maximum Likelihood estimation
+learned_diabetes_management_cpts <- DBN_parameters(DBN = learned_diabetes_management_dbn, data = sample_data_diabetes)
+```
+
+```{r}
+# Visualization of the initial network for the learned DBN (via Hill Climbing method)
+plot_g0(learned_diabetes_management_dbn)
+```
+
+```{r}
+# Visualization of the transition network for the learned DBN (via Hill Climbing method)
+plot_g_transition(learned_diabetes_management_dbn)
+```
+
+# Inference for DBNs: Filtering, Smoothing, Prediction and Forecasting
+
+Temporal inference could be of different types based on the time of the event of interest and the evidence available. Specifically, we talk about prediction when we want to predict the risk of future events, smoothing when we want to infer the probability of an event in the past and filtering when we are interested in inferring the present state. Forecasting is instead the task of predicting multiple future states given the current state of the patients, thus we need to know the entire set of features defined in the network to answer to forecasting queries. 
+
+All these kinds of inference are implemented in `DBNcare` and could be applied by transforming the DBN in the unrolled form via `get_unrolled_dbn` function. 
+
+Filtering, Smoothing and Prediction via approximated methods could be put in place via `cpquery` function from `bnlearn` library. Exact inference could be instead implemented directly using `gRain` library. Finally, forecasting function (`dbn_forecasting`) is natively from `DBNcare`. 
+
+Hereinafter, we show the results obtained by executing 4 different queries about Type 1 Diabetes patients' risk of cardiovascular diseases and nephropathy. 
+
+Specifically we are interested in:
+- Inferring Nephropathy probability at time 4 given that they have been treated and they had low risk of WHR at time 3
+- Inferring Cardiovascular disease risk at time 2 knowing that the patient present Cardiovascular Diseases at time 3
+- Inferring the probability of Cardiovascular Disease at time 4 given a high level of Low-Density Lipoprotein and low level of High-Density     Lipoprotein at the same time
+- Predicting the next 4 most probable states for a patient which is currently overweight with early stage Nephropathy, no CVD, a low risk of    HDL and WHR, a near optimal level of LDL, HbA1c and Triglicerides, elevated SBP and is under treatment
+
+The results for filtering, smoothing and prediction queries are obtained both through logic sampling and likelihood weighting methods. The two methods provide similar results.
+ 
+```{r}
+# Transforming the DBN into a standard BN by unrolling the network
+dbn_diabetes_unrolled <- get_unrolled_dbn(learned_diabetes_management_cpts, 4)
+```
+
+```{r}
+# Prediction via logic sampling: inferring Nephropathy probability at time 4 given low risk of WHR at time 3 and an administered treatment at the same time 
+cpquery(dbn_diabetes_unrolled, event = (Nephropathy_4 == "None"), evidence=((WHR_3 == "Low Risk") & (Treatment_3 == 'Yes')))
+```
+```{r}
+# Prediction  via likelihood weighting: inferring Nephropathy probability at time 4 given low risk of WHR at time 3 and an administered treatment at the same time
+cpquery(dbn_diabetes_unrolled, event = (Nephropathy_4 == "None"), evidence=list(WHR_3 = "Low Risk",Treatment_3 = 'Yes'), 
+        method = "lw")
+```
+
+```{r}
+# Smoothing via logic sampling: inferring CVD risk at time 2 knowing that the patient has a CVD at time 3
+cpquery(dbn_diabetes_unrolled, event = (CVD_2 == "Present"), evidence=(CVD_3 == "Present"))
+```
+```{r}
+# Smoothing via likelihood weighting: inferring CVD risk at time 2 knowing that the patient has a CVD at time 3
+cpquery(dbn_diabetes_unrolled, event = (CVD_2 == "Present"), evidence=list(CVD_3 = "Present"), 
+        method = "lw")
+```
+
+```{r}
+# Filtering via logic sampling: inferring probability of CVD at time 4 given a high level of LDL and low level of HDL at the same time
+cpquery(dbn_diabetes_unrolled, event = (CVD_4 == "Present"), evidence=((LDL_4 == "High") & (HDL_4 == "Low")))
+```
+```{r}
+# Filtering via likelihood weighting: inferring probability of CVD at time 4 given a high level of LDL and low level of HDL at the same time
+cpquery(dbn_diabetes_unrolled, event = (CVD_4 == "Present"), evidence=list(LDL_4 = "High", HDL_4 = "Low"), 
+        method = "lw")
+```
+
+```{r}
+# Forecasting: predicting the next 4 most probable states for a patient which is currently:
+# - overweight
+# - treated
+# - with early stage Nephropathy
+# - with no CVD
+# - with low risk of HDL
+# - with a near Optimal LDL
+# - with normal TRiG levels
+# - with elevated SBP
+# - with low risk of WHR
+# - with a normal HbA1c
+
+# definition of the current state for the entire set of variables in the DBN
+current_state <- list(Time=c(0), HDL = c('Low'), LDL = c('Near Optimal'), TRIG = c('Normal'), SBP = c('Elevated'), BMI = c('Overweight'), WHR = c('Low Risk'), HbA1c = c('Normal'), Nephropathy = c('Early Stage'), CVD = c('None'), Treatment = c("Yes"))
+# predict the next 4 states via forecasting function
+dbn_forecasting(fitted_diabetes_management_dbn, current_state, 4)
+
+```
+
+# Additional DBN learning examples: constraint-based algorithm, hybrid methods and learning a DBN while blacklisting/whitelisting arcs
+
+```{r}
+# Here, the structure is learned via PC stable method, using Mutual Information as conditional independence test 
+diabetes_management_dbn_PC <- DynamicBayesianNetwork::StructureLearning.Network(data = sample_data_diabetes, algorithm = 'pc.stable', test='mi')
+summary_DBN(diabetes_management_dbn_PC)
+# The parameters are always learned via Maximum Likelihood estimation
+diabetes_management_cpts_PC_ML <- DBN_parameters(DBN = diabetes_management_dbn_PC, data = sample_data_diabetes)
+```
+
+```{r}
+# Here, the structure is learned via Restricted Maximization method, using log-likelihood as a score for Tabu Search score-based method and Mutual Information as a conditional independence test for PC-stable method
+diabetes_management_dbn_MMHC <- DynamicBayesianNetwork::StructureLearning.Network(data = sample_data_diabetes, algorithm = 'rsmax2', algorithm.res = "pc.stable", algorithm.max = "tabu", score='loglik',test='mi')
+summary_DBN(diabetes_management_dbn_MMHC)
+# The parameters are always learned via Maximum Likelihood estimation
+diabetes_management_cpts_MMHC_ML <- DBN_parameters(DBN = diabetes_management_dbn_MMHC, data = sample_data_diabetes)
+```
+
+```{r}
+# Here, the structure is learned as above, but a set of arcs are blacklisted, thus they are forbidden in the DBN, and another set is whitelisted, thus they are fixed in the network and could not be deleted
+
+# Define the set of forbidden arcs: CVD could not be parent of any other variable
+bl_from <- c('CVD_0','CVD_0','CVD_0','CVD_0','CVD_0','CVD_0','CVD_0','CVD_0','CVD_t','CVD_t','CVD_t','CVD_t','CVD_t','CVD_t','CVD_t','CVD_t')
+bl_to <- c('HDL_0','LDL_0','TRIG_0','SBP_0','BMI_0','WHR_0','HbA1c_0','Treatment_0','HDL_t','LDL_t','TRIG_t','SBP_t','BMI_t','WHR_t','HbA1c_t','Treatment_t')
+blacklist_set <- matrix(c(bl_from,bl_to), ncol = 2, byrow = FALSE)
+colnames(blacklist_set) <- c('from','to')
+
+# Define the set of fixed arcs; CVD is a children of HDL and LDL both at time 0 and at time t
+wl_from <- c('HDL_0','LDL_0','HDL_t','LDL_t')
+wl_to <- c('CVD_0','CVD_0','CVD_t','CVD_t')
+whitelist_set <- matrix(c(wl_from,wl_to), ncol = 2, byrow = FALSE)
+colnames(whitelist_set) <- c('from','to')
+
+diabetes_management_dbn_HC_prior <- DynamicBayesianNetwork::StructureLearning.Network(data = sample_data_diabetes, algorithm = 'hc', score='bic',blacklist=blacklist_set,whitelist=whitelist_set)
+summary_DBN(diabetes_management_dbn_HC_prior)
+# The parameters are always learned via Maximum Likelihood estimation
+diabetes_management_cpts_HC_ML_prior <- DBN_parameters(DBN = diabetes_management_dbn_HC_prior, data = sample_data_diabetes)
+```
+
+
+

@@ -1,0 +1,424 @@
+# ![](images/DBNcare.svg){width="177"}
+
+# DBNcare: An R Package for Dynamic Bayesian Networks in Healthcare
+
+## Introduction
+
+DBNcare package has the aim of creating an open source package for the Dynamic Bayesian Network framework. The current version of the package supports multinomial Dynamic Bayesian Networks with a markov order of 1 and **no missing values**.
+
+## Current Implemented Features
+
+-   Definition of a Dynamic Bayesian Network with markov order of 1.
+
+-   Interactive Visualization of G_0 and G_transition.
+
+-   Generate a Random Multinomial Dynamic Bayesian Network.
+
+-   Sampling.
+
+-   Parameter Learning.
+
+-   Structure Learning.
+
+-   Inference (Exact and Approximate).
+
+## Examples
+
+### Definition of a Dynamic Bayesian Network
+
+The following code shows how to create a Dynamic Bayesian Network model. The definition require two steps:
+
+-   Definition of G_0
+
+-   Definition of G_transition
+
+Once the DBN is defined it can be visualized using the visualization methods.
+
+```{r}
+library('DynamicBayesianNetwork')
+library(zeallot)
+```
+
+```{r}
+my_dbn <-
+  empty_DBN(dynamic_nodes = c("A", "B", "C", "D", "E","F"),
+            markov_order = 1)
+
+# Creating G_0
+
+
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('A', 't_0'),
+              to = c('D', 't_0'))
+
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('A', 't_0'),
+              to = c('C', 't_0'))
+
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('B', 't_0'),
+              to = c('C', 't_0'))
+
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('B', 't_0'),
+              to = c('D', 't_0'))
+
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('D', 't_0'),
+              to = c('E', 't_0'))
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('E', 't_0'),
+              to = c('F', 't_0'))
+
+
+# Creating G_transition
+
+my_dbn <- add_arc_DBN(DBN = my_dbn,
+                      from = c('A', 't'),
+                      to = c('D', 't'))
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('A', 't'),
+              to = c('C', 't'))
+
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('B', 't'),
+              to = c('C', 't'))
+
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('B', 't'),
+              to = c('D', 't'))
+
+my_dbn <- add_arc_DBN(DBN = my_dbn,
+                      from = c('D', 't'),
+                      to = c('E', 't'))
+
+my_dbn <- add_arc_DBN(DBN = my_dbn,
+                      from = c('E', 't'),
+                      to = c('F', 't'))
+
+
+
+my_dbn <- add_arc_DBN(DBN = my_dbn,
+                      from = c('A', 't-1'),
+                      to = c('A', 't'))
+
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('B', 't-1'),
+              to = c('B', 't'))
+
+my_dbn <-
+  add_arc_DBN(DBN = my_dbn,
+              from = c('C', 't-1'),
+              to = c('C', 't'))
+
+my_dbn <- add_arc_DBN(DBN = my_dbn,
+                      from = c('D', 't-1'),
+                      to = c('D', 't'))
+
+my_dbn <- add_arc_DBN(DBN = my_dbn,
+                      from = c('E', 't-1'),
+                      to = c('E', 't'))
+
+my_dbn <- add_arc_DBN(DBN = my_dbn,
+                      from = c('F', 't-1'),
+                      to = c('F', 't'))
+```
+
+### Visualization
+
+The package allows the user to visualize in an interactive setting G_transition and G_0 to have better control on the defined structure.
+
+### G_transition
+
+```{r}
+plot_g_transition(my_dbn)
+```
+
+### G_0
+
+G_0 can be visualized and a dropdown menu will help the user to navigate the defined network. In fact when a node is selected from the menu the relationships and the node itself will be highlighted.
+
+```{r}
+plot_g0(my_dbn)
+```
+
+### Sampling
+
+Given a Dynamic Bayesian Network, the package can generate a dataset using a sampling procedure. For the sake of simplicity a simpler DBN is defined to ease the parameters setting procedure.
+
+```{r}
+# Creating a DBN
+  my_dbn <-
+    empty_DBN(dynamic_nodes = c("A", "B", "C"),
+              markov_order = 1)
+  
+  # Creating G_0
+  my_dbn <-
+    add_arc_DBN(DBN = my_dbn,
+                from = c('A', 't_0'),
+                to = c('B', 't_0'))
+  my_dbn <-
+    add_arc_DBN(DBN = my_dbn,
+                from = c('A', 't_0'),
+                to = c('C', 't_0'))
+  
+  my_dbn <-
+    add_arc_DBN(DBN = my_dbn,
+                from = c('B', 't_0'),
+                to = c('C', 't_0'))
+  
+  # Creating G_transition
+  my_dbn <- add_arc_DBN(DBN = my_dbn,
+                        from = c('A', 't'),
+                        to = c('B', 't'))
+  my_dbn <-
+    add_arc_DBN(DBN = my_dbn,
+                from = c('A', 't'),
+                to = c('C', 't'))
+  
+  my_dbn <-
+    add_arc_DBN(DBN = my_dbn,
+                from = c('B', 't'),
+                to = c('C', 't'))
+  
+  my_dbn <- add_arc_DBN(DBN = my_dbn,
+                        from = c('A', 't-1'),
+                        to = c('A', 't'))
+  
+  my_dbn <-
+    add_arc_DBN(DBN = my_dbn,
+                from = c('B', 't-1'),
+                to = c('B', 't'))
+  
+  my_dbn <-
+    add_arc_DBN(DBN = my_dbn,
+                from = c('C', 't-1'),
+                to = c('C', 't'))
+  
+  #Defining CPT G_0
+  A_lv <- c('yes', 'no')
+  B_lv <- c('high', 'low')
+  C_lv <- c('medium', 'high')
+  A_0.prob <- array(c(0.2, 0.8),
+                    dim = length(A_lv),
+                    dimnames = list(A_0 = A_lv))
+  B_0.prob <- array(
+    c(0.25, 0.75, 0.6, 0.4),
+    dim = c(length(B_lv), length(A_lv)),
+    dimnames = list(B_0 = B_lv, A_0 = A_lv)
+  )
+  C_0.prob <- array(
+    c(0.1, 0.9, 0.5, 0.5, 0.3, 0.7, 0.6, 0.4),
+    dim = c(length(C_lv), length(B_lv), length(A_lv)),
+    dimnames = list(C_0 = C_lv, B_0 = B_lv, A_0 = A_lv)
+  )
+  
+  # Defining CPT G_transition
+  dims_A_t <- list(A_t = A_lv)
+  dims_A_t[['A_t-1']] = A_lv
+  # defining dims for B
+  dims_B_t <- list(B_t = B_lv, A_t = A_lv)
+  dims_B_t[['B_t-1']] = B_lv
+  
+  # defining dims for C
+  dims_C_t <- list(C_t = C_lv, A_t = A_lv, B_t = B_lv)
+  dims_C_t[['C_t-1']] = C_lv
+  
+  #defining A_t CPT
+  A_t.prob = array(c(0.8, 0.2, 0.05, 0.95),
+                   dim = c(length(A_lv), length(A_lv)),
+                   dimnames = dims_A_t)
+  # defining B_t CPT
+  B_t.prob = array(
+    c(0.2, 0.8, 0.6, 0.4, 0.3, 0.7, 0.1, 0.9),
+    dim = c(length(B_lv), length(A_lv), length(B_lv)),
+    dimnames = dims_B_t
+  )
+  #defining C_t CPT
+  C_t.prob = array(
+    c(
+      0.1,
+      0.9,
+      0.2,
+      0.8,
+      0.12,
+      0.88,
+      0.9,
+      0.1,
+      0.3,
+      0.7,
+      0.4,
+      0.6,
+      0.25,
+      0.75,
+      0.45,
+      0.55
+    ),
+    dim = c(length(C_lv), length(A_lv), length(B_lv), length(C_lv)),
+    dimnames = dims_C_t
+  )
+  
+  CPTs_mydbn = list(
+    A_0 = A_0.prob,
+    B_0 = B_0.prob,
+    C_0 = C_0.prob,
+    A_t = A_t.prob,
+    B_t = B_t.prob,
+    C_t = C_t.prob
+  )
+  #defining the two dbns
+  fitted_my_dbn <- DBN_parameters(my_dbn, CPTs_mydbn)
+```
+
+```{r}
+plot_g_transition(my_dbn)
+
+```
+
+```{r}
+plot_g0(my_dbn)
+
+```
+
+### Generating a Dataset
+
+The dbn_sampling function allows the user to sample a dataset of 6 samples and a timeseries length of 10.
+
+```{r}
+dbn_sampling(fitted_my_dbn, 10, 6)
+```
+
+### Structure Learning
+
+Given a dataset comprised of the Sample_id (unique index for each sample), the Time (time index) and all the variables, the package allows the user to learn the parameters of a Dynamic Bayesian Network through different structure learning methods. The package dispose of score-based, constraint-based and hybrid methods.
+
+```{r}
+#dataset generation and structure learning might require some time depending on the number of samples and the length of the time series
+sampled_dataset <-dbn_sampling(fitted_DBN = fitted_my_dbn, 1e+4, 5)
+
+#learned DBN through Hill Climbing method with log-likelihood as a score
+fitted_dbn_structure_hc <-StructureLearning.Network(data = sampled_dataset, algorithm = 'hc', score = 'bic')
+#learned DBN through PC stable method with mutual information as conditional independence test
+fitted_dbn_structure_pc <-StructureLearning.Network(data = sampled_dataset, algorithm = 'pc.stable', score = 'mi')
+```
+
+Here a summary of the structures generated via Hill climbing and PC stable methods and the structure defined by us.
+
+```{r}
+summary_DBN(fitted_dbn_structure_hc)
+```
+
+```{r}
+summary_DBN(fitted_dbn_structure_pc)
+```
+
+```{r}
+summary_DBN(my_dbn)
+```
+
+### Parameter Learning
+
+Given a dataset and the structure of a Dynamic Bayesian Network, the package allows the user to learn the parameters of the model through Maximum Likelihood Estimation (MLE).
+
+```{r}
+#here the parameters are learned given the structure previously learned through hill climbing method
+fitted_dbn_with_param_learning <-DBN_parameters(DBN = fitted_dbn_structure_hc, data = sampled_dataset)
+```
+
+Here we can compare the parameters learned by the MLE and the parameters set by us.
+
+```{r}
+fitted_dbn_with_param_learning
+```
+
+```{r}
+fitted_my_dbn
+```
+
+## Inference
+
+The package does not implement native algorithm for the Dynamic Bayesian Network framework but given a fitted dbn the unrolled network can be generated, unlocking all the inference methods of the bnlearn package.
+
+### Unroll the network
+
+```{r}
+dbn_unrolled<-get_unrolled_dbn(fitted_my_dbn, 4)
+```
+
+### Exact Inference
+
+```{r}
+library(gRain)
+library(bnlearn)
+```
+
+As in bnlearn Exact inference is performed using gRain tool.
+
+```{r}
+junction <- compile(as.grain(dbn_unrolled))
+querygrain(junction, nodes = "C_4")$C_4
+j_c_3 <- setEvidence(junction, nodes = "C_3", states = "high") 
+querygrain(j_c_3, nodes = "C_4")$C_4
+
+```
+
+### Approximate Inference
+
+```{r}
+#performing inference using logic sampling
+cpquery(dbn_unrolled, event = (C_4 == "high"), evidence = (C_3 == "high"))
+```
+
+```{r}
+#performing inference using logic sampling
+cpquery(dbn_unrolled, event = (C_4 == "medium"), evidence = (C_3 == "high"))
+```
+
+```{r}
+cpquery(dbn_unrolled, event = (C_4 == "high"), evidence = list(C_3 = "high"), method="lw")
+```
+
+```{r}
+#performing inference using likelihood weighting
+cpquery(dbn_unrolled, event = (C_4 == "medium"), evidence = list(C_3 = "high"), method="lw")
+```
+
+### Forecasting
+
+Forecasting can be performed using the following parameters: a fitted Dynamic Bayesian Network, a list containing the observations for the timepoint of interest, the number of time points you would like to forecast.
+
+```{r}
+dbn_forecasting(fitted_my_dbn,list(Time=c(0), A=c("no"), B=c("low"), C=c("medium")), 3)
+
+```
+
+## Create a random Multinomial Dynamic Bayesian Network
+
+### with a specific node ordering
+
+Using the function random_dbn the user can create a Dynamic Bayesian Network. The random generation of the network is made up of two steps:
+
+-   In the first one, the user can specify some characteristics of the network by using the parameter *is_same* and *prob_edge.* When is_same is TRUE G_transition will have all the relationships specified in G_0. The parameter prob_edge controls the sparsity of the network.
+
+-   In the second step, the user can specify some properties of the multinomial distributions of the nodes. The parameter fixed_cardinality allows the user to have an homogeneus network where all nodes have the same cardinality. When fixed_cardinality is TRUE max_variables_cardinality is used to specify the cardinality of all nodes, while when fixed_cardinality is FALSE a 2\<= cardinality \<= max_variables_cardinality will be sampled for each node.
+
+```{r}
+#set seed for reproducibility
+set.seed(10)
+#first step: a random dbn with 5 nodes
+dbn_at_random<-random_dbn(LETTERS[1:5],TRUE,0.6, 0.5)
+#second step: fit all nodes distributions generating a multinomial distribution with a cardinality = 2.
+dbn_at_random_fitted<-fit_random_dbn(dbn_at_random, TRUE, 2)
+```
+
+For more details on how the random Dynamic Bayesian Network is generated, please read the documentation (*?random_dbn*, *?fit_random_dbn*, *?generate_dbn_random_structure*, *?generate_dbn_nodes_distributions*).

@@ -1,4 +1,4 @@
-<img src="https://github.com/federicopirola/DynamicBayesianNetwork/blob/main/notebooks/images/DBNcare.svg" alt="DBNcare package logo" width="227" height="227"/>
+<img src="https://github.com/federicopirola/DBNcare/blob/main/notebooks/images/DBNcare.svg" alt="DBNcare package logo" width="227" height="227"/>
 <h1>DBNcare: An R Package for Dynamic Bayesian Networks in Healthcare</h1>
 <h2>Table of Contents</h2>
 <ul>
@@ -29,14 +29,14 @@ install.packages("devtools")
 3. Use `devtools` to install DBNcare from GitHub:
 
 ```R
-devtools::install_github("https://github.com/federicopirola/DynamicBayesianNetwork")
+devtools::install_github("https://github.com/federicopirola/DBNcare")
 ```
 
 After completing these steps, you'll be ready to use DBNcare for your Dynamic Bayesian Networks projects. As the package is still under development, make sure to check for updates regularly.
 ## Usage
 <a name="usage"></a>
 <!-- Content for the Usage section -->
-The table below highlights the main features currently implemented in DBNcare. For more detailed information on these and additional features, please refer to the [documentation]() or explore this [notebook](https://github.com/federicopirola/DynamicBayesianNetwork/blob/main/notebooks/dbn_main_features.Rmd).
+The table below highlights the main features currently implemented in DBNcare. For more detailed information on these and additional features, please refer to the [documentation]() or explore this [notebook](https://github.com/federicopirola/DBNcare/blob/main/notebooks/dbn_main_features.Rmd).
 
 | Feature             | Discrete | Continuous | Mixed     |
 |---------------------|----------|------------|-----------|
